@@ -1,75 +1,114 @@
 using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting;
+using System.Globalization;
+using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Audio;
 
-public class Audio : Singleton<Audio>
+public class Audio: Singleton<Audio>
 {
     //WARNING => This is a "Static" class.
+    [System.Serializable]
+    public class BGMInfo
+    {
+        public AudioClip clip;
+        public string name;
+        public int loopEndTime;
+        public int loopLength;
+    }
+
+    [System.Serializable]
+    public class SEInfo
+    {
+        public AudioClip clip;
+        public string name;
+    }
 
     //Inspector操作用
     [SerializeField] AudioMixer _audioMixer;
     [SerializeField] AudioSource _bgmSource;
     [SerializeField] AudioSource _seSource;
-    [SerializeField] AudioClip[] _bgmClips;
-    [SerializeField] string[] _bgmNames;
-    [SerializeField] AudioClip[] _seClips;
-    [SerializeField] string[] _seNames;
+    [SerializeField] BGMInfo[] _bgmInfos;
+    [SerializeField] SEInfo[] _seInfos;
 
     //static関数内使用
     public static AudioMixer audioMixer;
     public static AudioSource bgmSource;
     public static AudioSource seSource;
-    public static Dictionary <string, AudioClip> BGMs = new Dictionary<string, AudioClip>();
-    public static Dictionary <string, AudioClip> SEs = new Dictionary<string, AudioClip>();
+    public static BGMInfo[] bgmInfos;
+    public static SEInfo[] seInfos;
+    public static Dictionary<string, int> bgmIndexDictionary;
+    public static Dictionary<string, AudioClip> seClipDictionary;
+
+    //BGMLoop check用変数
+    private static string _name;
 
     //Fade In/Out用変数
-    readonly private static float _fadeSeconds = 0.5f; //Fadeにかかる時間
+    private static float _fadeSeconds = 0.5f; //Fadeにかかる時間
     private static float _fadeing = 0;
     private static float _nowVolume = 0;
 
     public override void Awake()
     {
-        RemoveDuplicates(); //Singleton
         Instantiate();
+        RemoveDuplicates(); //Singleton
+    }
 
-        //bgmSource.clip = bgmClips[0];
-        //bgmSource.Play();
+    public void Update()
+    {
+        CheckBGMLoop();
     }
 
 
     private void Instantiate()
     {
+        bgmInfos = new BGMInfo[_bgmInfos.Length];
+        seInfos = new SEInfo[_seInfos.Length];
+
+        bgmIndexDictionary = new Dictionary<string, int>();
+        seClipDictionary = new Dictionary<string, AudioClip>();
+
         audioMixer = _audioMixer;
         bgmSource = _bgmSource;
         seSource = _seSource;
 
-        if (_bgmClips.Length != _bgmNames.Length)
+        for (int i = 0; i < _bgmInfos.Length; i++)
         {
-            Debug.LogWarning("Please set bgm in both clip and name. Maybe, some bgms are not set in both.");
+            bgmInfos[i] = _bgmInfos[i];
+            bgmIndexDictionary[_bgmInfos[i].name] = i;
         }
-        if (_seClips.Length != _seNames.Length)
+        for (int i = 0; i < _seInfos.Length; i++)
         {
-            Debug.LogWarning("Please set se in both clip and name. Maybe, some ses are not set in both.");
-        }
-
-        for (int i = 0; i < _bgmClips.Length; i++)
-        {
-            BGMs[_bgmNames[i]] = _bgmClips[i];
-        }
-        for (int i = 0; i < _seClips.Length; i++)
-        {
-            SEs[_seNames[i]] = _seClips[i];
+            seInfos[i] = _seInfos[i];
+            seClipDictionary[_seInfos[i].name] = _seInfos[i].clip;
         }
     }
 
     //SEPlay用関数
-    public static void SEPlayOneShot(string key)
+    public static void SEPlayOneShot(string name)
     {
-        seSource.PlayOneShot(SEs[key]);
+        seSource.PlayOneShot(seClipDictionary[name]);
     }
 
+    public static void BGMPlayLoop(string name)
+    {
+        bgmSource.loop = true;
+        bgmSource.clip = bgmInfos[bgmIndexDictionary[name]].clip;
+        bgmSource.Play();
+
+        _name = name;
+    }
+
+    void CheckBGMLoop()
+    {
+        int index = bgmIndexDictionary[_name];
+        //流れてる音楽のSample数がEndの時刻を越えたらloopの長さだけ戻す
+        if (_bgmSource.timeSamples >= bgmInfos[index].loopEndTime)
+        {
+            _bgmSource.timeSamples -= bgmInfos[index].loopLength;
+        }
+    }
+    
     //Pause関数群
     public static void BGMPause()
     {
@@ -102,13 +141,12 @@ public class Audio : Singleton<Audio>
         audioMixer.SetFloat("SE", volume);
     }
 
-
     //BGM設定関数
-    public static void BGMSetter(string key)
+    public static void BGMSetter(int index)
     {
         audioMixer.GetFloat("BGM", out float nowvol);
         BGMFadeOut(nowvol);
-        bgmSource.clip = BGMs[key];
+        bgmSource.clip = bgmInfos[index].clip;
     }
 
     //FadeOut関数
@@ -137,4 +175,3 @@ public class Audio : Singleton<Audio>
         SetBGMVolume(_nowVolume);
     }
 }
-
